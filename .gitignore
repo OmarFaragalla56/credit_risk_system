@@ -17,8 +17,7 @@ data/*.csv
 data/*.zip
 data/*.joblib
 models/final_stack_model.joblib
-app/preprocessor.py
-app/schemas.py
+
 
 # Python cache and temporary files
 __pycache__/
