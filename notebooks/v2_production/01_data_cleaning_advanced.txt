@@ -1,0 +1,129 @@
+import pandas as pd
+import numpy as np
+import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.base import BaseEstimator, TransformerMixin
+
+import warnings
+warnings.filterwarnings('ignore')
+sns.set_theme(style="whitegrid")
+print("✅ Libraries imported successfully! Ready for production.")
+
+# Notice the updated path to point directly to the Kaggle dataset
+df = pd.read_csv('../../data/GiveMeSomeCredit/cs-training.csv')
+
+# Rename target for consistency
+if 'SeriousDlqin2yrs' in df.columns:
+    df.rename(columns={'SeriousDlqin2yrs': 'target'}, inplace=True)
+    
+print(f"📊 Original Data Shape: {df.shape}")
+
+X = df.drop(['target', 'Unnamed: 0', 'Id'], axis=1, errors='ignore')
+y = df['target']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+print(f"✅ Training Features Shape: {X_train.shape}")
+print(f"🔒 Testing Features Shape: {X_test.shape}")
+
+class CreditRiskFeatureEngineer(BaseEstimator, TransformerMixin):
+    def __init__(self, cap_outliers=True):
+        self.cap_outliers = cap_outliers
+        self.upper_bounds = {}
+        
+    def fit(self, X, y=None):
+        X_df = pd.DataFrame(X)
+        if self.cap_outliers:
+            for col in X_df.columns:
+                if X_df[col].dtype in ['float64', 'int64']:
+                    self.upper_bounds[col] = X_df[col].quantile(0.99)
+        return self
+        
+    def transform(self, X):
+        if not isinstance(X, pd.DataFrame):
+            X_out = pd.DataFrame(X)
+        else:
+            X_out = X.copy()
+            
+        if self.cap_outliers:
+            for col, upper_bound in self.upper_bounds.items():
+                if col in X_out.columns:
+                    X_out[col] = np.clip(X_out[col], a_min=None, a_max=upper_bound)
+                    
+        if 'MonthlyIncome' in X_out.columns:
+            X_out['log_monthly_income'] = np.log1p(X_out['MonthlyIncome'].fillna(0))
+            
+        if 'RevolvingUtilizationOfUnsecuredLines' in X_out.columns and 'MonthlyIncome' in X_out.columns:
+            X_out['util_per_income'] = X_out['RevolvingUtilizationOfUnsecuredLines'] / (X_out['MonthlyIncome'].fillna(0) + 1)
+            
+        delinq_cols = ['NumberOfTime30-59DaysPastDueNotWorse', 'NumberOfTime60-89DaysPastDueNotWorse', 'NumberOfTimes90DaysLate']
+        if all(c in X_out.columns for c in delinq_cols):
+            X_out['total_past_due_events'] = X_out[delinq_cols].sum(axis=1)
+            X_out['has_been_late'] = (X_out['total_past_due_events'] > 0).astype(int)
+            
+        if 'MonthlyIncome' in X_out.columns and 'NumberOfDependents' in X_out.columns:
+            X_out['income_per_dependent'] = X_out['MonthlyIncome'] / (X_out['NumberOfDependents'].fillna(0) + 1)
+            
+        if 'DebtRatio' in X_out.columns and 'MonthlyIncome' in X_out.columns:
+            conditions = [
+                X_out['MonthlyIncome'].isna(),
+                X_out['MonthlyIncome'].notna()
+            ]
+            choices = [
+                X_out['DebtRatio'], 
+                X_out['DebtRatio'] * X_out['MonthlyIncome']
+            ]
+            X_out['absolute_monthly_debt'] = np.select(conditions, choices, default=0)
+
+        return X_out
+
+print("✅ Custom Transformer constructed!")
+
+feature_engineer = CreditRiskFeatureEngineer(cap_outliers=True)
+dummy_X = feature_engineer.fit_transform(X_train.head(5))
+all_cols = dummy_X.columns.tolist()
+
+num_pipeline = Pipeline([
+    ('imputer', IterativeImputer(max_iter=10, random_state=42)), 
+    ('scaler', StandardScaler())
+])
+
+master_pipeline = Pipeline([
+    ('feature_engineering', feature_engineer),
+    ('scaling', ColumnTransformer([
+        ('num', num_pipeline, all_cols)
+    ], remainder='passthrough'))
+])
+print("✅ Master Pipeline Assembled!")
+
+X_train_processed = master_pipeline.fit_transform(X_train)
+X_test_processed = master_pipeline.transform(X_test)
+
+feature_names = all_cols
+X_train_proc_df = pd.DataFrame(X_train_processed, columns=feature_names, index=X_train.index)
+X_test_proc_df = pd.DataFrame(X_test_processed, columns=feature_names, index=X_test.index)
+
+print(f"✅ X_train shape went from {X_train.shape[1]} to {X_train_processed.shape[1]} features.")
+
+joblib.dump(master_pipeline, '../../models/master_pipeline.pkl')
+print("💾 Saved preprocessing pipeline to models/master_pipeline.pkl")
+
+train_out = X_train_proc_df.copy()
+train_out['target'] = y_train.values
+train_out.to_csv('../../data/processed/train_processed.csv', index=False)
+
+test_out = X_test_proc_df.copy()
+test_out['target'] = y_test.values
+test_out.to_csv('../../data/processed/test_processed.csv', index=False)
+print("💾 Saved processed data to data/processed/")

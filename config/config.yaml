@@ -1,0 +1,26 @@
+model:
+  risk_threshold: 0.30    # Probability above which a borrower is "Declined"
+  optuna_trials: 50       # Number of hyperparameter search trials per Optuna study
+
+paths:
+  raw_data: "data/GiveMeSomeCredit/cs-training.csv"
+  test_data: "data/GiveMeSomeCredit/cs-test.csv"
+  sqlite_db: "data/credit_warehouse.db"
+  raw_batch: "data/raw_batch.csv"
+  processed_train: "data/processed/train_processed.csv"
+  processed_test: "data/processed/test_processed.csv"
+  master_pipeline: "models/master_pipeline.pkl"
+  champion_model: "models/champion_xgboost.pkl"
+
+mlflow:
+  experiment_name: "credit_risk_optuna"
+  tracking_uri: "sqlite:///mlflow.db"
+  registered_model_name: "credit_risk_challenger"
+
+great_expectations:
+  suite_name: "credit_risk_suite"
+  data_asset_name: "raw_borrower_batch"
+
+ingestion:
+  batch_size: 1000        # Number of new records to pull per ingest run
+  seed_table: false        # Set to false after initial DB seed to avoid duplicates

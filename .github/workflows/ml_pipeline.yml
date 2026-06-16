@@ -1,0 +1,80 @@
+name: MLOps Pipeline — Weekly Retraining
+
+on:
+  # Runs every Sunday at midnight UTC
+  schedule:
+    - cron: "0 0 * * 0"
+  # Allows manual trigger from the GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  mlops-pipeline:
+    name: Run Full MLOps Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout Code ────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set Up Python ────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Install Dependencies ─────────────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. Run Tests First (Fail Fast) ──────────────────────────────────────
+      - name: Run pytest suite
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+      # ── 5. Stage 1: Data Ingestion + Validation ─────────────────────────────
+      - name: Stage 1 — Data Ingestion
+        run: |
+          python -m src.ingest
+        env:
+          # Force DB seeding in a fresh CI environment (no existing warehouse)
+          FORCE_SEED: "true"
+
+      # ── 6. Stage 2: Feature Engineering ────────────────────────────────────
+      - name: Stage 2 — Data Processing
+        run: |
+          python -m src.process
+
+      # ── 7. Stage 3: Hyperparameter Search + MLflow Logging ─────────────────
+      - name: Stage 3 — Model Training (Optuna + MLflow)
+        run: |
+          python -m src.train
+
+      # ── 8. Stage 4: Model Promotion Decision ───────────────────────────────
+      - name: Stage 4 — Model Evaluation & Promotion
+        run: |
+          python -m src.evaluate
+
+      # ── 9. Upload champion model as artifact ────────────────────────────────
+      # In production, this step would push the new model to S3/GCS/Azure Blob
+      # and trigger a Docker rebuild + Kubernetes rolling deployment.
+      - name: Upload champion model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: champion-model
+          path: models/champion_xgboost.pkl
+          retention-days: 30
+
+      # ── 10. Upload MLflow run logs ──────────────────────────────────────────
+      - name: Upload MLflow tracking logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mlflow-runs
+          path: |
+            mlruns/
+            mlflow.db
+          retention-days: 30

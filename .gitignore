@@ -1,0 +1,54 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Generated utility and one-off scripts
+create_nbs.py
+generate_10x_notebooks.py
+reorganize_project.py
+update_nbs.py
+.cache
+
+# Legacy and archive files
+notebooks/archive/
+notebooks/v1_basic/
+data/*.csv
+data/*.zip
+data/*.joblib
+models/final_stack_model.joblib
+app/preprocessor.py
+app/schemas.py
+
+# Python cache and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.cache/
+.ipynb_checkpoints/
+
+# Data and SQLite databases
+data/credit_warehouse.db
+data/raw_batch.csv
+data/processed/
+notebooks/**/*.csv
+
+# MLflow and experiment tracking
+mlruns/
+mlflow.db
+
+# Large models (usually hosted on S3/GCS or model registries)
+models/*.pkl
+!models/champion_xgboost.pkl
+!models/master_pipeline.pkl
+
+# Local system specifications (not for remote tracking)
+SYSTEM_DESIGN.md
+
+# Ignored CSVs and legacy notebooks
+*.csv
+notebooks/01_data_cleaning.ipynb
+notebooks/01_data_cleaning_basic.ipynb
+notebooks/02_model_training.ipynb
+notebooks/02_model_training_basic.ipynb
