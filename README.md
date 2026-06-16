@@ -4,7 +4,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.135.3-009688.svg?logo=fastapi)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.56.0-FF4B4B.svg?logo=streamlit)
 ![Docker](https://img.shields.io/badge/Docker-Multi--Container-2496ED.svg?logo=docker)
-![XGBoost](https://img.shields.io/badge/Model-XGBoost%20%2B%20Optuna-orange)
+![Ensemble](https://img.shields.io/badge/Model-XGBoost%20%2B%20LightGBM%20Ensemble-orange)
 ![MLflow](https://img.shields.io/badge/Tracking-MLflow-0194E2.svg?logo=mlflow)
 ![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg?logo=githubactions)
 
@@ -14,7 +14,7 @@
 
 A **production-grade, continuously-learning credit risk assessment system** built on the Kaggle *Give Me Some Credit* dataset.
 
-This project goes well beyond standard ML notebooks. It implements a complete MLOps architecture: automated data ingestion from a SQL warehouse, zero-leakage feature engineering, Optuna hyperparameter optimization with full MLflow experiment tracking, automated model promotion, and a live Streamlit dashboard with SHAP-based explainability — all orchestrated by a GitHub Actions CI/CD pipeline.
+This project goes well beyond standard ML notebooks. It implements a complete MLOps architecture: automated data ingestion from a SQL warehouse, zero-leakage feature engineering, dual-model Optuna hyperparameter optimization (XGBoost + LightGBM) with full MLflow experiment tracking, ensembled blending, automated model promotion, and a live Streamlit dashboard with SHAP-based explainability — all orchestrated by a GitHub Actions CI/CD pipeline.
 
 **Live Demo:** `[Insert Render URL here]`  
 **Kaggle Score:** Private Leaderboard ROC-AUC **0.8697**
@@ -42,12 +42,12 @@ flowchart LR
 ## Project Structure
 
 ```
-credit_risk_system_mlops/
+credit_risk_system/
 │
 ├── app/                          # FastAPI backend
 │   ├── __init__.py
 │   ├── main.py                   # API endpoints (v2.0 — routes through master_pipeline)
-│   ├── engine.py                 # InferenceEngine: preprocessing + XGBoost + SHAP
+│   ├── engine.py                 # InferenceEngine: preprocessing + XGBoost/LightGBM Ensemble + SHAP
 │   ├── preprocessor.py           # Legacy (superseded by master_pipeline.pkl)
 │   ├── schemas.py                # Pydantic request/response models
 │   └── custom_transformers.py    # CreditRiskFeatureEngineer (zero-leakage, 3 hotfixes)
@@ -56,14 +56,14 @@ credit_risk_system_mlops/
 │   ├── __init__.py
 │   ├── ingest.py                 # Stage 1: SQL batch fetch + data validation
 │   ├── process.py                # Stage 2: Feature engineering + pipeline persistence
-│   ├── train.py                  # Stage 3: Optuna hyperparameter search + MLflow logging
+│   ├── train.py                  # Stage 3: Optuna XGB/LGB search + Ensemble Blending + MLflow logging
 │   └── evaluate.py               # Stage 4: Champion vs. challenger + auto-promotion
 │
 ├── config/
 │   └── config.yaml               # Single source of truth (paths, thresholds, MLflow settings)
 │
 ├── tests/
-│   └── test_transformer.py       # 5 pytest cases for CreditRiskFeatureEngineer
+│   └── test_transformer.py       # pytest test suite for CreditRiskFeatureEngineer & API
 │
 ├── notebooks/
 │   ├── archive/                  # Original unedited notebooks
@@ -74,7 +74,7 @@ credit_risk_system_mlops/
 │
 ├── models/
 │   ├── master_pipeline.pkl        # Fitted preprocessing pipeline (zero-leakage)
-│   └── champion_xgboost.pkl      # Best Optuna-tuned XGBoost model (served by API)
+│   └── champion_xgboost.pkl      # Blended Ensemble model (served by API)
 │
 ├── data/
 │   ├── GiveMeSomeCredit/         # Raw Kaggle CSV files
@@ -106,7 +106,7 @@ make pipeline
 # Or run individual stages
 make ingest    # Fetch & validate new borrower data from SQLite
 make process   # Feature engineering + save master_pipeline.pkl
-make train     # Optuna tuning (50 trials) + MLflow logging
+make train     # Dual Optuna tuning (50 trials each) + Ensemble Blending + MLflow logging
 make promote   # Compare models; promote challenger if it wins
 ```
 
@@ -149,6 +149,9 @@ The `src/ingest.py` script pulls data via SQL query from a local SQLite database
 ### Why Optuna Instead of GridSearchCV?
 Optuna uses a Tree-structured Parzen Estimator (TPE) — a Bayesian algorithm that intelligently narrows the search space based on prior trial outcomes. It converges to an optimal configuration with far fewer evaluations than grid or random search.
 
+### Why Blended XGBoost + LightGBM Ensemble?
+XGBoost grows trees depth-wise (level-wise), while LightGBM grows trees leaf-wise. Because they partition the feature space differently, averaging their probabilities (50% / 50%) significantly reduces prediction variance and prevents overfitting. This ensembled blend generalizes better to unseen borrower cohorts in production.
+
 ### Why MLflow Instead of Just Printing Scores?
 MLflow provides a persistent, queryable record of every training run — hyperparameters, metrics, and model artifacts. Without it, you can't answer "was last week's model better than today's?" or replay an experiment from 3 months ago.
 
@@ -161,7 +164,7 @@ MLflow provides a persistent, queryable record of every training run — hyperpa
 
 | Metric         | Score  |
 |----------------|--------|
-| ROC-AUC (CV)   | 0.8697 |
+| ROC-AUC (CV)   | 0.8691 |
 | Kaggle Private | 0.8675 |
 | Approval Threshold | 30% default probability |
 
@@ -173,7 +176,7 @@ MLflow provides a persistent, queryable record of every training run — hyperpa
 |---|---|
 | API Backend | FastAPI |
 | Frontend | Streamlit |
-| ML Model | XGBoost (Optuna-optimized) |
+| ML Model | Blended Ensemble (XGBoost + LightGBM) |
 | Preprocessing | Scikit-Learn Pipeline + IterativeImputer |
 | Explainability | SHAP TreeExplainer |
 | Experiment Tracking | MLflow |
